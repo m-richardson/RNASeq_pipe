@@ -1,10 +1,10 @@
-#!/bin/bash
-#RNASeq_pipe version 0.1
+#!/usr/bin/env bash
+#RNASeq_pipe
 
 #### some initial declarations ####
 Options=$@
 Optnum=$#
-Version=0.1
+Version=0.2
 
 function _usage {
 cat << EOF
@@ -28,6 +28,8 @@ Usage: RNASeq_pipe <[options]>
 	--cluster                   run pipeline on the cluster (Default: no)
         --debug			    debug pipeline
         --version		    print version info    
+	--trimmomatic=		    specify version of trimmomatic (Default: 0.33) 
+				    -numerical format only i.e --trimmomatic=0.33
 
 Pipeline Steps:
 1) Raw read quality filtering and adapter trimming
@@ -46,10 +48,10 @@ has only been tested on SGE, but will a small manual modification is portable to
     RNASeq_pipe -i input_data_dir -r ref.fa -a annotations.gff -l PE -o output_dir --cluster
 
 RNASeq_pipe $Options
- $*
 
 If you have any issues please lodge one on our github: https://github.com/m-richardson/RNASeq_pipe.git
 
+$*
 EOF
 exit -1
 }
@@ -61,6 +63,10 @@ RNASeq_pipe v$Version: An automated RNA-Seq analysis pipeline
 Usage: RNASeq_pipe -i input_data_dir -r ref.fa -a annotations.gff -l PE -o output_dir
 
 for more details see the extended help with: --help
+
+If you have any issues please lodge one on our github: https://github.com/m-richardson/RNASeq_pipe.git
+
+$*
 EOF
 exit -1
 }
@@ -81,8 +87,7 @@ exit -1
 
 #### parse command line args ####
 
-TEMP=`getopt -o hi:r:a:l:o: --long help,in:,ref:,annotations:,library:,output:,cluster,debug,version \
-             -n 'RNASeq_pipe' -- "$@"`
+TEMP=`getopt -o hi:r:a:l:o: --long help,in:,ref:,annotations:,library:,output:,cluster,debug,version,trimmomatic:: -n 'RNASeq_pipe' -- "$@"`
 
 if [ $# = 0 ]; then _operation "ERROR: no options given "; fi
 
@@ -97,6 +102,7 @@ out=
 cluster=false
 debug=false
 ver=false
+tv=0.33
 while true; do
   case "$1" in
     -h ) _operation; shift ;;
@@ -105,12 +111,17 @@ while true; do
     -a | --annotations ) ann="$2"; shift 2 ;;
     -l | --library ) lib="$2"; shift 2 ;;
     -o | --output ) out="$2"; shift 2 ;;
+    --trimmomatic)
+	case "$2" in
+	    "") tv='0.33'; shift 2 ;;
+	    *) tv="$2"; shift 2 ;;
+	esac ;;
     --help ) _usage; shift ;;
     --cluster ) cluster=true; shift ;;    
     --debug ) debug=true; shift ;;
     --version ) ver=true; shift ;;
     -- ) shift; break ;;
-    * ) _usage "ERROR: invalid options"  ;;
+    * ) _operation "ERROR: invalid options"; exit 1 ;;
   esac
 done
 
@@ -164,7 +175,7 @@ if ! [ -x "$(command -v STAR)" ]; then
 	echo "STAR is not installed, or accessable in your PATH" >&2
 	exit 1
 fi
-if ! [ -x "$(command -v trimmomatic-0.33.jar)" ]; then
+if ! [ -x "$(command -v trimmomatic-$tv'.jar')" ]; then
         echo "trimmomatic is not installed, or accessable in your PATH" >&2
 	exit 1
 fi
@@ -174,9 +185,9 @@ fi
 #### then define their full PATHs and modify PATH to the adapters #### 
 
 STAR=$(command -v STAR)
-TRIMO=$(command -v trimmomatic-0.33.jar)
-ADAPTs=$(command -v trimmomatic-0.33.jar | sed 's+trimmomatic-0.33.jar+adapters/TruSeq3-SE.fa+')
-ADAPTp=$(command -v trimmomatic-0.33.jar | sed 's+trimmomatic-0.33.jar+adapters/TruSeq3-PE.fa+')
+TRIMO=$(command -v trimmomatic-$tv'.jar')
+ADAPTs=$(command -v trimmomatic-$tv'.jar' | sed 's+trimmomatic-'$tv'.jar+adapters/TruSeq3-SE.fa+')
+ADAPTp=$(command -v trimmomatic-$tv'.jar' | sed 's+trimmomatic-'$tv'.jar+adapters/TruSeq3-PE.fa+')
 
 #### Pipeline components ####
 ###$ Options for the pipeline ####
@@ -421,8 +432,7 @@ else
   	    echo "Successfully built genome index"
 	  else
   	    echo "Could not build genome index..." >&2
-	    cat $OUT/STAR-genomeGenerate.err
-  	  exit 1
+	    cat $OUT/STAR-genomeGenerate.err;  exit 1
 	  fi  
 fi
 }
@@ -459,7 +469,7 @@ _init
 
 echo "Checking for genome index"
 _index
-
+ 
 echo "Runing pipeline..."
 
 #### this section will run the trimming and alignment for each sample on the cluster
