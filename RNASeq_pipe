@@ -1,13 +1,14 @@
 #!/bin/bash
-#RNASeq_pipe
+#RNASeq_pipe version 0.1
 
 #### some initial declarations ####
 Options=$@
 Optnum=$#
+Version=0.1
 
 function _usage {
 cat << EOF
-RNASeq_pipe: An automated RNA-Seq analysis pipeline
+RNASeq_pipe v$Version: An automated RNA-Seq analysis pipeline
 
 Usage: RNASeq_pipe <[options]>        
      Options:
@@ -26,6 +27,7 @@ Usage: RNASeq_pipe <[options]>
      Optional:
 	--cluster                   run pipeline on the cluster (Default: no)
         --debug			    debug pipeline
+        --version		    print version info    
 
 Pipeline Steps:
 1) Raw read quality filtering and adapter trimming
@@ -45,13 +47,16 @@ has only been tested on SGE, but will a small manual modification is portable to
 
 RNASeq_pipe $Options
  $*
+
+If you have any issues please lodge one on our github: https://github.com/m-richardson/RNASeq_pipe.git
+
 EOF
 exit -1
 }
 
 function _operation {
 cat << EOF
-RNASeq_pipe: An automated RNA-Seq analysis pipeline
+RNASeq_pipe v$Version: An automated RNA-Seq analysis pipeline
 
 Usage: RNASeq_pipe -i input_data_dir -r ref.fa -a annotations.gff -l PE -o output_dir
 
@@ -60,9 +65,23 @@ EOF
 exit -1
 }
 
+function _version {
+cat << EOF
+You are using RNASeq_pipe v$Version
+
+Usage: RNASeq_pipe -i input_data_dir -r ref.fa -a annotations.gff -l PE -o output_dir
+
+for more details see the extended help with: --help
+
+If you have any issues please lodge one on our github: https://github.com/m-richardson/RNASeq_pipe.git
+
+EOF
+exit -1
+}
+
 #### parse command line args ####
 
-TEMP=`getopt -o hi:r:a:l:o: --long help,in:,ref:,annotations:,library:,output:,cluster,debug \
+TEMP=`getopt -o hi:r:a:l:o: --long help,in:,ref:,annotations:,library:,output:,cluster,debug,version \
              -n 'RNASeq_pipe' -- "$@"`
 
 if [ $# = 0 ]; then _operation "ERROR: no options given "; fi
@@ -77,6 +96,7 @@ lib=
 out=
 cluster=false
 debug=false
+ver=false
 while true; do
   case "$1" in
     -h ) _operation; shift ;;
@@ -88,6 +108,7 @@ while true; do
     --help ) _usage; shift ;;
     --cluster ) cluster=true; shift ;;    
     --debug ) debug=true; shift ;;
+    --version ) ver=true; shift ;;
     -- ) shift; break ;;
     * ) _usage "ERROR: invalid options"  ;;
   esac
@@ -97,6 +118,12 @@ done
 
 if [ $debug == true ]; then
 	set -xv
+fi
+
+#### print version info ####
+
+if [ $ver == true ]; then
+        _version
 fi
 
 #### check that the required cmd line args are given ###
@@ -485,6 +512,8 @@ fi
 
 echo "Finished submitting jobs "
 echo "waiting until they finish"
+_jobCheck
+
 echo "Tidying up..."
 rm ~/*.sh.*
 
