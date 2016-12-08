@@ -431,8 +431,8 @@ fi
 #### check to see if index already exists for the specified reference - if not build
 
 function _index {
-ref_file=$(basename $GENOME)
-if [ -f $GENOMEdir/Genome ] && [ -f $GENOMEdir/$ref_file ]; then
+ref_file=$(grep 'genomeFastaFiles' $GENOMEdir/genomeParameters.txt | awk '{print $2}')
+if [ -f $GENOMEdir/Genome ] && [ $GENOME == $ref_file ]; then
        echo "Genome index already built"
        echo "using it instead of rebuilding..."
 else
