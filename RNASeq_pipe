@@ -50,8 +50,6 @@ has only been tested on SGE, but will a small manual modification is portable to
 RNASeq_pipe $Options
 
 If you have any issues please lodge one on our github: https://github.com/m-richardson/RNASeq_pipe.git
-
-$*
 EOF
 exit -1
 }
@@ -80,7 +78,6 @@ Usage: RNASeq_pipe -i input_data_dir -r ref.fa -a annotations.gff -l PE -o outpu
 for more details see the extended help with: --help
 
 If you have any issues please lodge one on our github: https://github.com/m-richardson/RNASeq_pipe.git
-
 EOF
 exit -1
 }
@@ -238,7 +235,7 @@ for i in $DATA'/*_1'$suf; do
         java -jar $TRIMO PE -threads 12 -phred33 -trimlog $OUTtrim/"${nf}.trimlog" $DATA/${nf}'_1'$suf $DATA/${nf}'_2'$suf $OUTtrim/${nf}'_1_trim'$suf $OUTtrim/${nf}'_1_trim_orph'$suf $OUTtrim/${nf}'_2_trim'$suf $OUTtrim/${nf}'_2_trim_orph'$suf ILLUMINACLIP:$ADAPTp:2:30:10:4 SLIDINGWINDOW:5:20 AVGQUAL:20 MINLEN:36
         mkdir $OUTaln/${nf}
         cd $OUTaln/${nf}
-        $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}_1_trim$suf $OUTtrim/${nf}'_2_trim'$suf --readFilesCommand zcat --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12
+        $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf $OUTtrim/${nf}'_2_trim'$suf --readFilesCommand zcat --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12
 	cd ..
 done
 }
@@ -299,7 +296,7 @@ for i in $DATA'/*_1'$suf; do
         java -jar $TRIMO PE -threads 12 -phred33 -trimlog $OUTtrim/"${nf}.trimlog" $DATA/${nf}'_1'$suf $DATA/${nf}'_2'$suf $OUTtrim/${nf}'_1_trim'$suf $OUTtrim/${nf}'_1_trim_orph'$suf $OUTtrim/${nf}'_2_trim'$suf $OUTtrim/${nf}'_2_trim_orph'$suf ILLUMINACLIP:$ADAPTp:2:30:10:4 SLIDINGWINDOW:5:20 AVGQUAL:20 MINLEN:36
         mkdir $OUTaln/${nf}
         cd $OUTaln/${nf}
-        $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}_1_trim$suf $OUTtrim/${nf}'_2_trim'$suf --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12
+        $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf $OUTtrim/${nf}'_2_trim'$suf --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12
         cd ..
 done
 }
@@ -342,7 +339,7 @@ done
 
 function _init {
 mkdir $OUT 2> /dev/null 
-sleep 0.25
+sleep 0.1
 
 if [ $? -eq 0 ]; then
   echo "Successfully created output directory"
@@ -352,7 +349,7 @@ else
 fi
 
 mkdir $GENOMEdir 2> $OUT/RNASeq_pipe.err
-sleep 0.25
+sleep 0.1
 
 if [ $? -eq 0 ]; then
   echo "Successfully created genome directory"
@@ -363,7 +360,7 @@ else
 fi
 
 mkdir $OUTtrim 2> $OUT/RNASeq_pipe.err
-sleep 0.25
+sleep 0.1
 
 if [ $? -eq 0 ]; then
   echo "Successfully created trimmed data directory"
@@ -374,7 +371,7 @@ else
 fi
 
 mkdir $OUTaln 2> $OUT/RNASeq_pipe.err
-sleep 0.25
+sleep 0.1
 
 if [ $? -eq 0 ]; then
   echo "Successfully created alignment directory"
@@ -385,7 +382,7 @@ else
 fi
 
 ln $GENOME $GENOMEdir 2> $OUT/RNASeq_pipe.err
-sleep 0.25
+sleep 0.1
 
 if [ $? -eq 0 ]; then
   echo "Successfully linked genome"
@@ -396,7 +393,7 @@ else
 fi
 
 ln $ANNOTS $GENOMEdir 2> $OUT/RNASeq_pipe.err
-sleep 0.25
+sleep 0.1
 
 if [ $? -eq 0 ]; then
   echo "Successfully linked annotations"
