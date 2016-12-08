@@ -277,7 +277,7 @@ done
 # unziped fastq code blocks
 function _SEsuZ {
 for i in $DATA'/*_1'$suf; do
-        nf=$(basename $i _1.fastq.gz)
+        nf=$(basename $i _1.fastq)
         echo "working with $nf"
         echo $OUTaln/$nf/Log.final.out >> $OUTaln/index
         java -jar $TRIMO SE -threads 12 -phred33 -trimlog $OUTtrim/"${nf}.trimlog" $DATA/${nf}'_1'$suf $OUTtrim/${nf}'_1_trim'$suf ILLUMINACLIP:$ADAPTs:2:30:10:4 SLIDINGWINDOW:5:20 AVGQUAL:20 MINLEN:36
@@ -290,7 +290,7 @@ done
 
 function _PEsuZ {
 for i in $DATA'/*_1'$suf; do
-        nf=$(basename $i _1.fastq.gz)
+        nf=$(basename $i _1.fastq)
         echo "working with $nf"
         echo $OUTaln/$nf/Log.final.out >> $OUTaln/index
         java -jar $TRIMO PE -threads 12 -phred33 -trimlog $OUTtrim/"${nf}.trimlog" $DATA/${nf}'_1'$suf $DATA/${nf}'_2'$suf $OUTtrim/${nf}'_1_trim'$suf $OUTtrim/${nf}'_1_trim_orph'$suf $OUTtrim/${nf}'_2_trim'$suf $OUTtrim/${nf}'_2_trim_orph'$suf ILLUMINACLIP:$ADAPTp:2:30:10:4 SLIDINGWINDOW:5:20 AVGQUAL:20 MINLEN:36
@@ -303,7 +303,7 @@ done
 
 function _SEuZ {
 for i in $DATA'/*_1'$suf; do
-        nf=$(basename $i _1.fastq.gz)
+        nf=$(basename $i _1.fastq)
         echo "working with $nf"
         echo $OUTaln/$nf/Log.final.out >> $OUTaln/index
         echo "#!/bin/bash" > "${nf}.sh"
@@ -320,7 +320,7 @@ done
 
 function _PEuZ {
 for i in $DATA'/*_1'$suf; do
-        nf=$(basename $i _1.fastq.gz)
+        nf=$(basename $i _1.fastq)
         echo "working with $nf"
         echo $OUTaln/$nf/Log.final.out >> $OUTaln/index
         echo "#!/bin/bash" > "${nf}.sh"
