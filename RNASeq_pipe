@@ -4,7 +4,7 @@
 #### some initial declarations ####
 Options=$@
 Optnum=$#
-Version=0.2
+Version=0.3
 
 function _usage {
 cat << EOF
@@ -166,6 +166,15 @@ if [ "X" = "X$out" ]; then
   exit 1
 fi
 
+if [ $lib == SE ] || [ $lib == PE ]; then
+    break
+else
+    echo "ERROR: incorrect -l/--library parameter specified: Please use SE or PE" >&2
+    echo
+    _operation
+    exit 1
+fi
+
 #### lets just make sure the programs needed exist in PATH and are executable ####
 
 if ! [ -x "$(command -v STAR)" ]; then
@@ -215,7 +224,7 @@ fi
 #### functions ####
 # fastq.gz code blocks
 function _SEsZ {
-for i in $DATA'/*_1'$suf; do
+for i in $DATA/*_1$suf; do
         nf=$(basename $i _1.fastq.gz)
         echo "working with $nf"
         echo $OUTaln/$nf/Log.final.out >> $OUTaln/index
@@ -228,7 +237,7 @@ done
 }
 
 function _PEsZ {
-for i in $DATA'/*_1'$suf; do
+for i in $DATA/*_1$suf; do
         nf=$(basename $i _1.fastq.gz)
         echo "working with $nf"
         echo $OUTaln/$nf/Log.final.out >> $OUTaln/index
@@ -241,7 +250,7 @@ done
 }
 
 function _SEZ {
-for i in $DATA'/*_1'$suf; do
+for i in $DATA/*_1$suf; do
 	nf=$(basename $i _1.fastq.gz)
 	echo "working with $nf"
 	echo $OUTaln/$nf/Log.final.out >> $OUTaln/index
@@ -251,14 +260,15 @@ for i in $DATA'/*_1'$suf; do
 	echo mkdir $OUTaln/${nf} >> "${nf}.sh"
 	echo cd $OUTaln/${nf} >> "${nf}.sh"
 	echo $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf --readFilesCommand zcat --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12 >> "${nf}.sh"
-	#qsub -l qname=Virtual "${nf}.sh"
-	cat "${nf}.sh"
+	echo exit 0 >> "${nf}.sh"
+	qsub -l qname=Virtual "${nf}.sh"
+	#cat "${nf}.sh"
 	rm "${nf}.sh"
 done
 }
 
 function _PEZ {
-for i in $DATA'/*_1'$suf; do
+for i in $DATA/*_1$suf; do
         nf=$(basename $i _1.fastq.gz)
         echo "working with $nf"
         echo $OUTaln/$nf/Log.final.out >> $OUTaln/index
@@ -268,15 +278,16 @@ for i in $DATA'/*_1'$suf; do
         echo mkdir $OUTaln/${nf} >> "${nf}.sh"
         echo cd $OUTaln/${nf} >> "${nf}.sh"
         echo $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf $OUTtrim/${nf}'_2_trim'$suf --readFilesCommand zcat --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12 >> "${nf}.sh"
-        #qsub -l qname=Virtual "${nf}.sh"
-        cat "${nf}.sh"
+	echo exit 0 >> "${nf}.sh"
+	qsub -l qname=Virtual "${nf}.sh"
+        #cat "${nf}.sh"
         rm "${nf}.sh"
 done
 }
 
 # unziped fastq code blocks
 function _SEsuZ {
-for i in $DATA'/*_1'$suf; do
+for i in $DATA/*_1$suf; do
         nf=$(basename $i _1.fastq)
         echo "working with $nf"
         echo $OUTaln/$nf/Log.final.out >> $OUTaln/index
@@ -289,7 +300,7 @@ done
 }
 
 function _PEsuZ {
-for i in $DATA'/*_1'$suf; do
+for i in $DATA/*_1$suf; do
         nf=$(basename $i _1.fastq)
         echo "working with $nf"
         echo $OUTaln/$nf/Log.final.out >> $OUTaln/index
@@ -302,7 +313,7 @@ done
 }
 
 function _SEuZ {
-for i in $DATA'/*_1'$suf; do
+for i in $DATA/*_1$suf; do
         nf=$(basename $i _1.fastq)
         echo "working with $nf"
         echo $OUTaln/$nf/Log.final.out >> $OUTaln/index
@@ -312,14 +323,15 @@ for i in $DATA'/*_1'$suf; do
         echo mkdir $OUTaln/${nf} >> "${nf}.sh"
         echo cd $OUTaln/${nf} >> "${nf}.sh"
         echo $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12 >> "${nf}.sh"
-        #qsub -l qname=Virtual "${nf}.sh"
-        cat "${nf}.sh"
+        echo exit 0 >> "${nf}.sh"
+	qsub -l qname=Virtual "${nf}.sh"
+        #cat "${nf}.sh"
         rm "${nf}.sh"
 done
 }
 
 function _PEuZ {
-for i in $DATA'/*_1'$suf; do
+for i in $DATA/*_1$suf; do
         nf=$(basename $i _1.fastq)
         echo "working with $nf"
         echo $OUTaln/$nf/Log.final.out >> $OUTaln/index
@@ -329,8 +341,9 @@ for i in $DATA'/*_1'$suf; do
         echo mkdir $OUTaln/${nf} >> "${nf}.sh"
         echo cd $OUTaln/${nf} >> "${nf}.sh"
         echo $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf $OUTtrim/${nf}'_2_trim'$suf --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12 >> "${nf}.sh"
-        #qsub -l qname=Virtual "${nf}.sh"
-        cat "${nf}.sh"
+        echo exit 0 >> "${nf}.sh"
+	qsub -l qname=Virtual "${nf}.sh"
+        #cat "${nf}.sh"
         rm "${nf}.sh"
 done
 }
@@ -418,7 +431,8 @@ fi
 #### check to see if index already exists for the specified reference - if not build
 
 function _index {
-if [ -f $GENOMEdir/Genome ]; then
+ref_file=$(basename $GENOME)
+if [ -f $GENOMEdir/Genome ] && [ -f $GENOMEdir/$ref_file ]; then
        echo "Genome index already built"
        echo "using it instead of rebuilding..."
 else
@@ -466,8 +480,6 @@ _init
 
 echo "Checking for genome index"
 _index
- 
-echo "Runing pipeline..."
 
 #### this section will run the trimming and alignment for each sample on the cluster
 
@@ -479,7 +491,7 @@ if [ $cluster == false ] && [[ $suf == .fastq ]]; then
           echo "Running pipeline in PE mode on this machine"
 	  _PEsuZ
 	else
-          echo "ERROR: incorrect -l/--library parameter specified: Please use SE or PE" >&2
+          echo "ERROR: could not submit pipeline jobs - incorrect parameters set" >&2
 	  exit 1
 	fi
 elif [ $cluster == false ] && [[ $suf == .fastq.gz ]]; then
@@ -490,8 +502,8 @@ elif [ $cluster == false ] && [[ $suf == .fastq.gz ]]; then
           echo "Running pipeline in PE mode on this machine"
           _PEsZ
         else
-          echo "ERROR: incorrect -l/--library parameter specified: Please use SE or PE" >&2
-          exit 1
+          echo "ERROR: could not submit pipeline jobs - incorrect parameters set" >&2
+	  exit 1
         fi
 elif [ $cluster == true ] && [[ $suf == .fastq ]]; then
 	if [ $LIB == SE ]; then
@@ -501,8 +513,8 @@ elif [ $cluster == true ] && [[ $suf == .fastq ]]; then
           echo "Running pipeline in PE mode on the cluster"
 	  _PEuZ
 	else
-          echo "ERROR: incorrect -l/--library parameter specified: Please use SE or PE" >&2
-          exit 1
+          echo "ERROR: could not submit pipeline jobs - incorrect parameters set" >&2
+	  exit 1
 	fi
 elif [ $cluster == true ] && [[ $suf == .fastq.gz ]]; then
         if [ $LIB == SE ]; then
@@ -512,17 +524,19 @@ elif [ $cluster == true ] && [[ $suf == .fastq.gz ]]; then
           echo "Running pipeline in PE mode on the cluster"
           _PEZ
         else
-          echo "ERROR: incorrect -l/--library parameter specified: Please use SE or PE" >&2
+          echo "ERROR: could not submit pipeline jobs - incorrect parameters set" >&2
           exit 1
         fi
 fi
 
-echo "Finished submitting jobs "
-echo "waiting until they finish"
-_jobCheck
-
-echo "Tidying up..."
-rm ~/*.sh.*
+#### if run in cluster mode then wait for jobs to finish and print status updates
+if [ $cluster == true ]; then
+	_jobCheck
+	echo "Tidying up..."
+	rm ~/*.sh.*
+else
+	break
+fi
 
 echo "Pipeline finished - check individual Log.final.out files just to make sure" 
 
