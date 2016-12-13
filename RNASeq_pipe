@@ -167,7 +167,7 @@ if [ "X" = "X$out" ]; then
 fi
 
 if [ $lib == SE ] || [ $lib == PE ]; then
-    break
+    echo 
 else
     echo "ERROR: incorrect -l/--library parameter specified: Please use SE or PE" >&2
     echo
@@ -431,7 +431,7 @@ fi
 #### check to see if index already exists for the specified reference - if not build
 
 function _index {
-ref_file=$(grep 'genomeFastaFiles' $GENOMEdir/genomeParameters.txt | awk '{print $2}')
+ref_file=$(grep 'genomeFastaFiles' $GENOMEdir/genomeParameters.txt | awk '{print $2}' >2 $OUT/RNASeq_pipe.err)
 if [ -f $GENOMEdir/Genome ] && [ $GENOME == $ref_file ]; then
        echo "Genome index already built"
        echo "using it instead of rebuilding..."
@@ -454,7 +454,7 @@ function _jobCheck {
 
 a=$(wc $OUTaln/index | awk '{print $1}') 
 while true ; do
-       b=$(ls $OUTaln/*/Log.final.out | wc | awk '{print $1}')
+       b=$(ls $OUTaln/*/*Log.final.out | wc | awk '{print $1}' 2> $OUT/RNASeq_pipe.err)
        echo $b out of $a files complete
        if (($a == $b))
        then
