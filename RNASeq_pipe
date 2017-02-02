@@ -543,12 +543,12 @@ RNASeq_pipe $Options
 "
 echo "Initialising..."
 echo "Raw reads are *$suf"
-#_init
+_init
 
 echo "Checking for genome index"
-#_index
+_index
 
-#_run
+_run
 
 #### if run in cluster mode then wait for jobs to finish and print status updates
 if [ $cluster == true ]; then
