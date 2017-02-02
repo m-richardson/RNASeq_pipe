@@ -4,7 +4,7 @@
 #### some initial declarations ####
 Options=$@
 Optnum=$#
-Version=0.3
+Version=0.4
 
 function _usage {
 cat << EOF
@@ -18,8 +18,9 @@ Usage: RNASeq_pipe <[options]>
         -i         --in             input - path to DIR containing raw read sample files
         			    -both fastq and gzipped fastq.gz files are supported
 				    -we will auto detect which ones you have
+				    -paired end data should follow the *_1.fastq and *_2.fastq convention
 	-r         --ref            reference genome/transcriptome (fasta)
-        -a         --annotations    reference genome/transcriptome annotations (gtf or gff)
+        -a         --annotations    reference genome/transcriptome annotations (gtf)
 	-l         --library        specify if your samples are single or paired ended
 			            -either SE (single) or PE (paired) 
         -o	   --output         output directory - specify full path
@@ -40,12 +41,12 @@ Pipeline Steps:
 Examples:
 Run the pipeline on a single machine:
 
-    RNASeq_pipe -i input_data_dir -r ref.fa -a annotations.gff -l PE -o output_dir
+    RNASeq_pipe -i input_data_dir -r ref.fa -a annotations.gtf -l PE -o output_dir
 
 Run the pipleine utalising a cluster - will run samples in parallel. Currently this program
 has only been tested on SGE, but will a small manual modification is portable to others
 
-    RNASeq_pipe -i input_data_dir -r ref.fa -a annotations.gff -l PE -o output_dir --cluster
+    RNASeq_pipe -i input_data_dir -r ref.fa -a annotations.gtf -l PE -o output_dir --cluster
 
 RNASeq_pipe $Options
 
@@ -58,7 +59,7 @@ function _operation {
 cat << EOF
 RNASeq_pipe v$Version: An automated RNA-Seq analysis pipeline
 
-Usage: RNASeq_pipe -i input_data_dir -r ref.fa -a annotations.gff -l PE -o output_dir
+Usage: RNASeq_pipe -i input_data_dir -r ref.fa -a annotations.gtf -l PE -o output_dir
 
 for more details see the extended help with: --help
 
@@ -81,6 +82,11 @@ If you have any issues please lodge one on our github: https://github.com/m-rich
 EOF
 exit -1
 }
+
+######
+# add gtf gff flag, add combine counts flag, add truseq2 library adaptors also
+#####
+
 
 #### parse command line args ####
 
@@ -431,10 +437,20 @@ fi
 #### check to see if index already exists for the specified reference - if not build
 
 function _index {
-ref_file=$(grep 'genomeFastaFiles' $GENOMEdir/genomeParameters.txt | awk '{print $2}' >2 $OUT/RNASeq_pipe.err)
-if [ -f $GENOMEdir/Genome ] && [ $GENOME == $ref_file ]; then
-       echo "Genome index already built"
-       echo "using it instead of rebuilding..."
+
+ref_path=$(dirname $GENOME)
+ref_file=$(head -n 3 $GENOMEdir/genomeParameters.txt | tail -n 1  | awk '{print $2}')
+ref_file2=$(head -n 3 $ref_path/genomeParameters.txt | tail -n 1 | awk '{print $2}' )
+ref_file2name=$(basename $ref_file2)
+ref_name=$(basename $GENOME)
+
+if [ -f $GENOMEdir/Genome ] && [ $GENOME == "$ref_file" ]; then
+	echo "Genome index already built"
+	echo "using it instead of rebuilding..."
+elif [ -f "$ref_path"/Genome ] && [ $ref_name == "$ref_file2name" ]; then
+	echo "Genome index already built"
+	echo "using it instead of rebuilding..."
+	cp --symbolic-link $ref_path/* $GENOMEdir
 else
 	echo "Could not find genome index"
 	echo "Building it from scratch instead..."
@@ -454,7 +470,7 @@ function _jobCheck {
 
 a=$(wc $OUTaln/index | awk '{print $1}') 
 while true ; do
-       b=$(ls $OUTaln/*/*Log.final.out | wc | awk '{print $1}' 2> $OUT/RNASeq_pipe.err)
+       b=$(find $OUTaln/*/ -type f -name "*_Log.final.out" | wc | awk '{print $1}')
        echo $b out of $a files complete
        if (($a == $b))
        then
@@ -465,23 +481,9 @@ while true ; do
 done
 }
 
+#### this section will run the trimming and alignment 
 
-#### Start of pipeline ####
-
-echo "
-RNASeq_pipe: An automated RNA-Seq analysis pipeline
-User options selected:
-
-RNASeq_pipe $Options
-"
-echo "Initialising..."
-echo "Raw reads are *$suf"
-_init
-
-echo "Checking for genome index"
-_index
-
-#### this section will run the trimming and alignment for each sample on the cluster
+function _run {
 
 if [ $cluster == false ] && [[ $suf == .fastq ]]; then
 	if [ $LIB == SE ]; then
@@ -528,17 +530,35 @@ elif [ $cluster == true ] && [[ $suf == .fastq.gz ]]; then
           exit 1
         fi
 fi
+}
+
+######################
+
+#### Run pipeline ####
+
+echo "RNASeq_pipe: An automated RNA-Seq analysis pipeline
+User options selected:
+
+RNASeq_pipe $Options
+"
+echo "Initialising..."
+echo "Raw reads are *$suf"
+#_init
+
+echo "Checking for genome index"
+#_index
+
+#_run
 
 #### if run in cluster mode then wait for jobs to finish and print status updates
 if [ $cluster == true ]; then
 	_jobCheck
 	echo "Tidying up..."
 	rm ~/*.sh.*
-else
-	break
+	echo "Pipeline finished - check sample Log.final.out files just to make sure"
+elif [ $cluster == false ]; then
+	echo "Pipeline finished - check sample Log.final.out files just to make sure"
 fi
-
-echo "Pipeline finished - check individual Log.final.out files just to make sure" 
 
 exit 0
 
