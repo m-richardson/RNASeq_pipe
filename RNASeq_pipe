@@ -15,15 +15,18 @@ Usage: RNASeq_pipe <[options]>
 	-h         --help           show this helpful help message
 
      Required:
-        -i         --in             input - path to DIR containing raw read sample files
+        -i         --in             input - FULL path to directory containing raw read sample files
         			    -both fastq and gzipped fastq.gz files are supported
 				    -we will auto detect which ones you have
 				    -paired end data should follow the *_1.fastq and *_2.fastq convention
 	-r         --ref            reference genome/transcriptome (fasta)
-        -a         --annotations    reference genome/transcriptome annotations (gtf)
+        -a         --annotations    reference genome/transcriptome annotations (gff or gtf)
+				    -while both gtf and gff are supported the gene ids 
+				    -are based on those in the gtf as default
+				    -but those in the gff when counts are quantified with Salmon 
 	-l         --library        specify if your samples are single or paired ended
 			            -either SE (single) or PE (paired) 
-        -o	   --output         output directory - specify full path
+        -o	   --output         output directory - specify FULL path
 	
      Optional:
 	--cluster                   run pipeline on the cluster (Default: no)
@@ -31,22 +34,50 @@ Usage: RNASeq_pipe <[options]>
         --version		    print version info    
 	--trimmomatic=		    specify version of trimmomatic (Default: 0.33) 
 				    -numerical format only i.e --trimmomatic=0.33
+	--collate		    collate counts for all samples into a combined matrix
+				    -this will produce an m x n matrix of genes (rows) by samples (columns)
+				    -counts are gene-level (Default) or transcript-level if --salmon selected
+	--salmon		    transcript quantification of counts using the massively-parallel 
+				    -stochastic collapsed variational inference algorithm from 
+				    -salmon (Prefered method)
+				    -NOTE: This only works with a transcriptome reference NOT a genome 
+	--transcriptome		    build and map to a transcriptome reference
+				    -the supplied genome/transcriptome ref and annotation file are
+				    -enough to build this as long as the annotations 
+				    -contain the RNAs you are interested in
+
 
 Pipeline Steps:
-1) Raw read quality filtering and adapter trimming
-2) Build your genome index
-3) STAR 2-pass mapping to your reference genome of choice
+
+1) Raw read quality filtering and adapter trimming with Trimmomatic 
+	-currently only Illumina TruSeq v3 chemistry supported, I will add TruSeq v2 shortly
+2) Build your genom/transcriptomee index (STAR)
+3) STAR 2-pass mapping to your reference genome/transcriptome of choice
 4) quantify expression - i.e gets counts
+	-this can be done in 2 ways: 
+	a) the union exon model (as per HTseq count) implemented in STAR (Default) 
+	-suitable for gene-level counts when using a genome reference
+	b) transcript-level quantification using Salmon (Optional)
+	-suitable only when you map reads against a transcriptome reference
+5) collate individual sample counts into a m x n matrix for differential abundance testing (Optional)
+	-requires R
 
 Examples:
+
 Run the pipeline on a single machine:
 
     RNASeq_pipe -i input_data_dir -r ref.fa -a annotations.gtf -l PE -o output_dir
+
+Run the pipeline on a single machine using salmon and producing a collated count matrix
+
+    RNASeq_pipe -i input_data_dir -r transcriptome_ref.fa -a transcriptome_annotations.gtf -l PE \
+    -o output_dir --salmon --collate
 
 Run the pipleine utalising a cluster - will run samples in parallel. Currently this program
 has only been tested on SGE, but will a small manual modification is portable to others
 
     RNASeq_pipe -i input_data_dir -r ref.fa -a annotations.gtf -l PE -o output_dir --cluster
+
 
 RNASeq_pipe $Options
 
@@ -59,11 +90,10 @@ function _operation {
 cat << EOF
 RNASeq_pipe v$Version: An automated RNA-Seq analysis pipeline
 
-Usage: RNASeq_pipe -i input_data_dir -r ref.fa -a annotations.gtf -l PE -o output_dir
-
-for more details see the extended help with: --help
-
+for more details and discussion of optional flags see the extended help with: --help
 If you have any issues please lodge one on our github: https://github.com/m-richardson/RNASeq_pipe.git
+
+Basic Usage: RNASeq_pipe -i input_data_dir -r ref.fa -a annotations.gtf -l PE -o output_dir
 
 $*
 EOF
@@ -74,23 +104,18 @@ function _version {
 cat << EOF
 You are using RNASeq_pipe v$Version
 
-Usage: RNASeq_pipe -i input_data_dir -r ref.fa -a annotations.gff -l PE -o output_dir
-
-for more details see the extended help with: --help
-
-If you have any issues please lodge one on our github: https://github.com/m-richardson/RNASeq_pipe.git
 EOF
 exit -1
 }
 
 ######
-# add gtf gff flag, add combine counts flag, add truseq2 library adaptors also
+# add gtf gff flag, add truseq2 library adaptors also
 #####
 
 
 #### parse command line args ####
 
-TEMP=`getopt -o hi:r:a:l:o: --long help,in:,ref:,annotations:,library:,output:,cluster,debug,version,trimmomatic:: -n 'RNASeq_pipe' -- "$@"`
+TEMP=`getopt -o hi:r:a:l:o: --long help,in:,ref:,annotations:,library:,output:,cluster,collate,salmon,transcriptome,debug,version,trimmomatic:: -n 'RNASeq_pipe' -- "$@"`
 
 if [ $# = 0 ]; then _operation "ERROR: no options given "; fi
 
@@ -103,6 +128,9 @@ ann=
 lib=
 out=
 cluster=false
+collate=false
+salmon=false
+transcriptome=false
 debug=false
 ver=false
 tv=0.33
@@ -121,6 +149,9 @@ while true; do
 	esac ;;
     --help ) _usage; shift ;;
     --cluster ) cluster=true; shift ;;    
+    --collate ) collate=true; shift ;;
+    --salmon ) salmon=true; shift ;;
+    --transcriptome ) transcriptome=true; shift ;;
     --debug ) debug=true; shift ;;
     --version ) ver=true; shift ;;
     -- ) shift; break ;;
@@ -186,25 +217,47 @@ fi
 if ! [ -x "$(command -v STAR)" ]; then
 	echo "STAR is not installed, or accessable in your PATH" >&2
 	exit 1
+else
+	STAR=$(command -v STAR)
 fi
 if ! [ -x "$(command -v trimmomatic-$tv'.jar')" ]; then
-        echo "trimmomatic is not installed, or accessable in your PATH" >&2
+        echo "Trimmomatic is not installed, or accessable in your PATH" >&2
 	exit 1
+else
+	TRIMO=$(command -v trimmomatic-$tv'.jar')
+	ADAPTs=$(command -v trimmomatic-$tv'.jar' | sed 's+trimmomatic-'$tv'.jar+adapters/TruSeq3-SE.fa+')
+	ADAPTp=$(command -v trimmomatic-$tv'.jar' | sed 's+trimmomatic-'$tv'.jar+adapters/TruSeq3-PE.fa+')
 fi
-
-##### DO WE WANT TO ADD IN VERSION CHECK ???
-
-#### then define their full PATHs and modify PATH to the adapters #### 
-
-STAR=$(command -v STAR)
-TRIMO=$(command -v trimmomatic-$tv'.jar')
-ADAPTs=$(command -v trimmomatic-$tv'.jar' | sed 's+trimmomatic-'$tv'.jar+adapters/TruSeq3-SE.fa+')
-ADAPTp=$(command -v trimmomatic-$tv'.jar' | sed 's+trimmomatic-'$tv'.jar+adapters/TruSeq3-PE.fa+')
+if ! [ -x "$(command -v gffread)" ]; then
+	echo "gffread is not installed, or accessable in your PATH" >&2
+	exit 1
+else
+	GFFREAD=$(command -v gffread)
+fi
+if [ "$salmon" = "true" ]; then
+	if ! [ -x "$(command -v salmon)" ]; then
+          echo "You have selected the --salmon option 
+	  but Salmon is not installed, or accessable in your PATH" >&2
+          exit 1
+	else 
+	  SALMON=$(command -v salmon)
+	fi
+fi
+if [ "$collate" = "true" ]; then
+        if ! [ -x "$(command -v R)" ]; then
+          echo "You have selected the --collate option 
+          but R is not installed, or accessable in your PATH" >&2
+          exit 1
+	else 
+	  R=$(command -v R)
+        fi
+fi
 
 #### Pipeline components ####
 ###$ Options for the pipeline ####
 
 OUT=$out
+LOG=$OUT/Logs
 DATA=$in
 OUTtrim=$OUT/trimmed_files
 OUTaln=$OUT/STAR_aln
@@ -227,7 +280,8 @@ else
   exit 1
 fi
 
-#### functions ####
+#### functions
+
 # fastq.gz code blocks
 function _SEsZ {
 for i in $DATA/*_1$suf; do
@@ -238,6 +292,16 @@ for i in $DATA/*_1$suf; do
         mkdir $OUTaln/${nf} 
         cd $OUTaln/${nf} 
         $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf --readFilesCommand zcat --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12
+	if [ "$salmon" == "true" ]; then
+        echo "Running Salmon transcript quantification..."
+          if [ $LIB == PE ]; then
+          slib=IU
+          elif [ $LIB == SE ]; then
+          slib=U
+          fi
+          $SALMON quant -t $GENOMEdir/transcriptome.fa -l $slib -a "${nf}_Aligned.out.bam" -o $OUTaln/${nf}/salmon_quant
+	  mv $OUTaln/${nf}/salmon_quant/quant.sf $OUTaln/${nf}/salmon_quant/"${nf}_quant.sf"
+	fi
 	cd ..
 done
 }
@@ -251,6 +315,16 @@ for i in $DATA/*_1$suf; do
         mkdir $OUTaln/${nf}
         cd $OUTaln/${nf}
         $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf $OUTtrim/${nf}'_2_trim'$suf --readFilesCommand zcat --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12
+	if [ "$salmon" == "true" ]; then
+        echo "Running Salmon transcript quantification..."
+          if [ $LIB == PE ]; then
+          slib=IU
+          elif [ $LIB == SE ]; then
+          slib=U
+          fi
+          $SALMON quant -t $GENOME -g $ANNOTS -l $slib -a "${nf}_Aligned.out.bam" -o $OUTaln/${nf}/salmon_quant
+          mv $OUTaln/${nf}/salmon_quant/quant.sf $OUTaln/${nf}/salmon_quant/"${nf}_quant.sf"
+	fi
 	cd ..
 done
 }
@@ -266,8 +340,18 @@ for i in $DATA/*_1$suf; do
 	echo mkdir $OUTaln/${nf} >> "${nf}.sh"
 	echo cd $OUTaln/${nf} >> "${nf}.sh"
 	echo $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf --readFilesCommand zcat --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12 >> "${nf}.sh"
+	if [ "$salmon" == "true" ]; then
+          if [ $LIB == PE ]; then
+          slib=IU
+          elif [ $LIB == SE ]; then
+          slib=U
+          fi
+          echo $SALMON quant -t $GENOMEdir/transcriptome.fa -l $slib -a "${nf}_Aligned.out.bam" -o $OUTaln/${nf}/salmon_quant >> "${nf}.sh"
+          echo mv $OUTaln/${nf}/salmon_quant/quant.sf $OUTaln/${nf}/salmon_quant/"${nf}_quant.sf" >> "${nf}.sh"
+	fi
 	echo exit 0 >> "${nf}.sh"
 	qsub -l qname=Virtual "${nf}.sh"
+	sleep 0.1
 	#cat "${nf}.sh"
 	rm "${nf}.sh"
 done
@@ -284,9 +368,19 @@ for i in $DATA/*_1$suf; do
         echo mkdir $OUTaln/${nf} >> "${nf}.sh"
         echo cd $OUTaln/${nf} >> "${nf}.sh"
         echo $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf $OUTtrim/${nf}'_2_trim'$suf --readFilesCommand zcat --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12 >> "${nf}.sh"
+	if [ "$salmon" == "true" ]; then
+          if [ $LIB == PE ]; then
+          slib=IU
+          elif [ $LIB == SE ]; then
+          slib=U
+          fi
+          echo $SALMON quant -t $GENOMEdir/transcriptome.fa -l $slib -a "${nf}_Aligned.out.bam" -o $OUTaln/${nf}/salmon_quant >> "${nf}.sh"
+          echo mv $OUTaln/${nf}/salmon_quant/quant.sf $OUTaln/${nf}/salmon_quant/"${nf}_quant.sf" >> "${nf}.sh"
+	fi
 	echo exit 0 >> "${nf}.sh"
 	qsub -l qname=Virtual "${nf}.sh"
-        #cat "${nf}.sh"
+        sleep 0.1
+	#cat "${nf}.sh"
         rm "${nf}.sh"
 done
 }
@@ -301,7 +395,17 @@ for i in $DATA/*_1$suf; do
         mkdir $OUTaln/${nf}
         cd $OUTaln/${nf}
         $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12
-        cd ..
+        if [ "$salmon" == "true" ]; then
+        echo "Running Salmon transcript quantification..."
+          if [ $LIB == PE ]; then
+          slib=IU
+          elif [ $LIB == SE ]; then
+          slib=U
+          fi
+          $SALMON quant -t $GENOMEdir/transcriptome.fa -l $slib -a "${nf}_Aligned.out.bam" -o $OUTaln/${nf}/salmon_quant
+          mv $OUTaln/${nf}/salmon_quant/quant.sf $OUTaln/${nf}/salmon_quant/"${nf}_quant.sf"
+	fi
+	cd ..
 done
 }
 
@@ -314,7 +418,17 @@ for i in $DATA/*_1$suf; do
         mkdir $OUTaln/${nf}
         cd $OUTaln/${nf}
         $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf $OUTtrim/${nf}'_2_trim'$suf --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12
-        cd ..
+        if [ "$salmon" == "true" ]; then
+        echo "Running Salmon transcript quantification..."
+          if [ $LIB == PE ]; then
+          slib=IU
+          elif [ $LIB == SE ]; then
+          slib=U
+          fi
+          $SALMON quant -t $GENOMEdir/transcriptome.fa -l $slib -a "${nf}_Aligned.out.bam" -o $OUTaln/${nf}/salmon_quant
+          mv $OUTaln/${nf}/salmon_quant/quant.sf $OUTaln/${nf}/salmon_quant/"${nf}_quant.sf"
+	fi
+	cd ..
 done
 }
 
@@ -329,9 +443,19 @@ for i in $DATA/*_1$suf; do
         echo mkdir $OUTaln/${nf} >> "${nf}.sh"
         echo cd $OUTaln/${nf} >> "${nf}.sh"
         echo $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12 >> "${nf}.sh"
-        echo exit 0 >> "${nf}.sh"
+        if [ "$salmon" == "true" ]; then
+          if [ $LIB == PE ]; then
+          slib=IU
+          elif [ $LIB == SE ]; then
+          slib=U
+          fi
+          echo $SALMON quant -t $GENOMEdir/transcriptome.fa -l $slib -a "${nf}_Aligned.out.bam" -o $OUTaln/${nf}/salmon_quant >> "${nf}.sh"
+          echo mv $OUTaln/${nf}/salmon_quant/quant.sf $OUTaln/${nf}/salmon_quant/"${nf}_quant.sf" >> "${nf}.sh"
+	fi
+	echo exit 0 >> "${nf}.sh"
 	qsub -l qname=Virtual "${nf}.sh"
-        #cat "${nf}.sh"
+        sleep 0.1
+	#cat "${nf}.sh"
         rm "${nf}.sh"
 done
 }
@@ -347,19 +471,29 @@ for i in $DATA/*_1$suf; do
         echo mkdir $OUTaln/${nf} >> "${nf}.sh"
         echo cd $OUTaln/${nf} >> "${nf}.sh"
         echo $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf $OUTtrim/${nf}'_2_trim'$suf --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12 >> "${nf}.sh"
-        echo exit 0 >> "${nf}.sh"
+        if [ "$salmon" == "true" ]; then
+          if [ $LIB == PE ]; then
+          slib=IU
+          elif [ $LIB == SE ]; then
+          slib=U
+          fi
+          echo $SALMON quant -t $GENOMEdir/transcriptome.fa -l $slib -a "${nf}_Aligned.out.bam" -o $OUTaln/${nf}/salmon_quant >> "${nf}.sh"
+          echo mv $OUTaln/${nf}/salmon_quant/quant.sf $OUTaln/${nf}/salmon_quant/"${nf}_quant.sf" >> "${nf}.sh"
+	fi
+	echo exit 0 >> "${nf}.sh"
 	qsub -l qname=Virtual "${nf}.sh"
         #cat "${nf}.sh"
-        rm "${nf}.sh"
+        sleep 0.1
+	rm "${nf}.sh"
 done
 }
 
 # pipeline code blocks
 
 function _init {
+echo "Initialising..."
+echo "Raw reads are *$suf"
 mkdir $OUT 2> /dev/null 
-sleep 0.1
-
 if [ $? -eq 0 ]; then
   echo "Successfully created output directory"
 else
@@ -367,110 +501,187 @@ else
   exit 1
 fi
 
-mkdir $GENOMEdir 2> $OUT/RNASeq_pipe.err
-sleep 0.1
-
+mkdir $LOG 2> /dev/null
 if [ $? -eq 0 ]; then
-  echo "Successfully created genome directory"
+  echo "Successfully created output directory"
 else
-  echo "Could not create genome directory" >&2
-  cat $OUT/RNASeq_pipe.err
+  echo "Could not create output directory" >&2
   exit 1
 fi
 
-mkdir $OUTtrim 2> $OUT/RNASeq_pipe.err
-sleep 0.1
+mkdir $GENOMEdir 2> $LOG/RNASeq_pipe.err
+if [ $? -eq 0 ]; then
+  echo "Successfully created reference directory"
+else
+  echo "Could not create reference directory" >&2
+  cat $LOG/RNASeq_pipe.err
+  exit 1
+fi
 
+mkdir $OUTtrim 2> $LOG/RNASeq_pipe.err
 if [ $? -eq 0 ]; then
   echo "Successfully created trimmed data directory"
 else
   echo "Could not create trimmed data directory" >&2
-  cat $OUT/RNASeq_pipe.err
+  cat $LOG/RNASeq_pipe.err
   exit 1
 fi
 
-mkdir $OUTaln 2> $OUT/RNASeq_pipe.err
-sleep 0.1
-
+mkdir $OUTaln 2> $LOG/RNASeq_pipe.err
 if [ $? -eq 0 ]; then
   echo "Successfully created alignment directory"
 else
   echo "Could not create alignment directory" >&2
-  cat $OUT/RNASeq_pipe.err
+  cat $LOG/RNASeq_pipe.err
   exit 1
 fi
 
-ln $GENOME $GENOMEdir 2> $OUT/RNASeq_pipe.err
-sleep 0.1
-
+ln $GENOME $GENOMEdir 2> $LOG/RNASeq_pipe.err
 if [ $? -eq 0 ]; then
-  echo "Successfully linked genome"
+  echo "Successfully linked reference"
 else
-  echo "Could not link genome" >&2
-  cat $OUT/RNASeq_pipe.err
+  echo "Could not link reference" >&2
+  cat $LOG/RNASeq_pipe.err
   exit 1
 fi
 
-ln $ANNOTS $GENOMEdir 2> $OUT/RNASeq_pipe.err
-sleep 0.1
-
+ln $ANNOTS $GENOMEdir 2> $LOG/RNASeq_pipe.err
 if [ $? -eq 0 ]; then
   echo "Successfully linked annotations"
 else
   echo "Could not link annotations" >&2
-  cat $OUT/RNASeq_pipe.err
+  cat $LOG/RNASeq_pipe.err
   exit 1
 fi
 
-touch $OUTaln/index 2> $OUT/RNASeq_pipe.err
-sleep 0.25
-
+touch $OUTaln/index 2> $LOG/RNASeq_pipe.err
 if [ $? -eq 0 ]; then
   echo "Successfully created sample index file"
 else
   echo "Could create sample index file" >&2
-  cat $OUT/RNASeq_pipe.err
+  cat $LOG/RNASeq_pipe.err
   exit 1
 fi
 }
 
+#### gff or gtf check, process annotations and reference for Salmon and STAR
 #### check to see if index already exists for the specified reference - if not build
 
 function _index {
 
 ref_path=$(dirname $GENOME)
-ref_file=$(head -n 3 $GENOMEdir/genomeParameters.txt | tail -n 1  | awk '{print $2}')
-ref_file2=$(head -n 3 $ref_path/genomeParameters.txt | tail -n 1 | awk '{print $2}' )
+ref_file=$(head -n 3 $GENOMEdir/genomeParameters.txt | tail -n 1  | awk '{print $2}') 
+ref_file2=$(head -n 3 $ref_path/genomeParameters.txt | tail -n 1 | awk '{print $2}')
 ref_file2name=$(basename $ref_file2)
 ref_name=$(basename $GENOME)
+ann_format=$(basename $ANNOTS | sed 's/.*\.//')
+ann_dir=$(dirname $ANNOTS )
 
-if [ -f $GENOMEdir/Genome ] && [ $GENOME == "$ref_file" ]; then
-	echo "Genome index already built"
-	echo "using it instead of rebuilding..."
-elif [ -f "$ref_path"/Genome ] && [ $ref_name == "$ref_file2name" ]; then
-	echo "Genome index already built"
-	echo "using it instead of rebuilding..."
-	cp --symbolic-link $ref_path/* $GENOMEdir
-else
-	echo "Could not find genome index"
-	echo "Building it from scratch instead..."
-        $STAR --runMode genomeGenerate --genomeDir $GENOMEdir --limitGenomeGenerateRAM 81000000000000 --genomeFastaFiles $GENOME --sjdbGTFfile $ANNOTS --runThreadN 12 2> $OUT/STAR-genomeGenerate.err
+#determine annotation format and change to gtf for STAR if needed
+if [ "$ann_format" = "gff" ]; then
+	an=$(basename $ANNOTS .gff)
+	an_format_new=gtf
+	echo "Annotations are in gff format"
+	$GFFREAD $ann_dir/$an'.'$ann_format -T -o $GENOMEdir/$an'.'$an_format_new 2> $LOG/gffread-build.err
 	  if [ $? -eq 0 ]; then
-  	    echo "Successfully built genome index"
-	  else
-  	    echo "Could not build genome index..." >&2
-	    cat $OUT/STAR-genomeGenerate.err;  exit 1
-	  fi  
+            echo "Converting to gtf for STAR"
+          else
+            echo "error with converting annotation file" >&2
+            cat $LOG/gffread-build.err;  exit 1
+          fi
+elif [ "$ann_format" = "gff3" ]; then
+	an=$(basename $ANNOTS .gff3)
+	an_format_new=gtf
+	echo "Annotations are in gff format"
+        $GFFREAD $ann_dir/$an'.'$ann_format -T -o $GENOMEdir/$an'.'$an_format_new 2> $LOG/gffread-build.err
+	  if [ $? -eq 0 ]; then
+            echo "Converting to gtf for STAR"
+          else
+            echo "error with converting annotation file" >&2
+            cat $LOG/gffread-build.err;  exit 1
+          fi
+elif [ "$ann_format" = "gtf" ]; then
+	an=$(basename $ANNOTS .gtf)
+	an_format_new=$ann_format
+	echo "Annotations are in gtf format"
+else
+	echo "Cannot determine annotation format, only *.gtf or *.gff supported" >&2
+fi
+
+# get transcriptome if using salmon quantification - they both map to the same things so this just generates the .fa file needed by salmon
+if [ "$transcriptome" == "true" ]; then
+	an=$(basename $ANNOTS '.'$ann_format)
+	echo "Building transcripts for transcriptome alignment"
+        $GFFREAD -w $GENOMEdir/transcriptome.fa -g $GENOME $ann_dir/$an'.'$ann_format 2> $LOG/gffread-build.err
+	if [ $? -eq 0 ]; then
+            echo "Successfully built transcripts"
+        else
+            echo "Could not build transcripts..." >&2
+            cat $LOG/gffread-build.err;  exit 1
+        fi
+elif [ "$salmon" == "true" ]; then
+	an=$(basename $ANNOTS '.'$ann_format)
+	echo "Building transcripts to be used in Salmon quantification"
+        $GFFREAD -w $GENOMEdir/transcriptome.fa -g $GENOME $ann_dir/$an'.'$ann_format 2> $LOG/gffread-build.err
+	if [ $? -eq 0 ]; then
+            echo "Successfully built transcripts"
+        else
+            echo "Could not build transcripts..." >&2
+            cat $LOG/gffread-build.err;  exit 1
+        fi
+fi
+
+# STAR reference index check and building
+if [ "$transcriptome" == "false" ]; then
+	an=$(basename $ANNOTS '.'$ann_format)
+	echo "Checking for pre-built STAR genome reference index"
+	if [ -f $GENOMEdir/Genome ] && [ $GENOME == "$ref_file" ]; then
+		echo "Reference index already built"
+		echo "using it instead of rebuilding..."
+	elif [ -f "$ref_path"/Genome ] && [ $ref_name == "$ref_file2name" ]; then
+		echo "Reference index already built"
+		echo "using it instead of rebuilding..."
+		cp --symbolic-link $ref_path/* $GENOMEdir 2> $LOG/RNASeq_pipe.err
+	else
+		echo "Could not find index"
+		echo "Building it from scratch instead..."
+        	$STAR --runMode genomeGenerate --genomeDir $GENOMEdir --limitGenomeGenerateRAM 81000000000000 --genomeFastaFiles $GENOME --sjdbGTFfile $GENOMEdir/$an'.gtf' --runThreadN 12 2> $LOG/STAR-genomeGenerate.err
+	  	if [ $? -eq 0 ]; then
+  	    	  echo "Successfully built reference index"
+	  	else
+  	    	  echo "Could not build reference index..." >&2
+	    	  cat $LOG/STAR-genomeGenerate.err;  exit 1
+		fi
+ 	fi  
+elif [ "$transcriptome" == "true" ]; then
+	echo "Checking for pre-built STAR reference index"
+	if [ -f $GENOMEdir/Genome ] && [ $GENOME == "$ref_file" ]; then
+                echo "Reference index already built"
+                echo "using it instead of rebuilding..."
+        elif [ -f "$ref_path"/Genome ] && [ $ref_name == "$ref_file2name" ]; then
+                echo "Reference index already built"
+                echo "using it instead of rebuilding..."
+                cp --symbolic-link $ref_path/* $GENOMEdir 2> $LOG/RNASeq_pipe.err
+        else
+                echo "Could not find index"
+                echo "Building it from scratch instead..."
+                $STAR --runMode genomeGenerate --genomeDir $GENOMEdir --limitGenomeGenerateRAM 81000000000000 --genomeFastaFiles $GENOME --sjdbGTFfile $GENOMEdir/$an'.gtf' --runThreadN 12 2> $LOG/STAR-genomeGenerate.err
+                if [ $? -eq 0 ]; then
+                  echo "Successfully built reference index"
+                else
+                  echo "Could not build reference index..." >&2
+                  cat $LOG/STAR-genomeGenerate.err;  exit 1
+                fi
+        fi
 fi
 }
 
 #### check on cluster jobs and print complete status
 
 function _jobCheck {
-
 a=$(wc $OUTaln/index | awk '{print $1}') 
 while true ; do
-       b=$(find $OUTaln/*/ -type f -name "*_Log.final.out" | wc | awk '{print $1}')
+       b=$(find $OUTaln/*/ -type f -name "*_Log.final.out" | wc | awk '{print $1}' 2> $LOG/RNASeq_pipe.err)
        echo $b out of $a files complete
        if (($a == $b))
        then
@@ -481,10 +692,36 @@ while true ; do
 done
 }
 
-#### this section will run the trimming and alignment 
+#### collate counts
+
+function _CollateCounts {
+if [ "$collate" = "true" ]; then
+	echo "Collating counts"
+	if [ "$salmon" == "true" ]; then
+		echo 'setwd("'$OUT'")' > $OUT/CollateCounts.R
+                echo "ls <- list.files(recursive = TRUE, full.names = TRUE)" >> $OUT/CollateCounts.R
+                echo 'files <- ls[grepl("*quant.sf", ls)] ' >> $OUT/CollateCounts.R
+                echo "cts <- lapply(files, read.delim, skip = 1, header = FALSE, row.names = 1)" >> $OUT/CollateCounts.R
+                echo 'merged <- do.call("cbind", lapply(cts, function(x) x[, 4, drop = FALSE]))' >> $OUT/CollateCounts.R
+                echo "colnames(merged) <- basename(files)" >> $OUT/CollateCounts.R
+                echo 'write.csv(merged, "allSalmonQuant.csv")' >> $OUT/CollateCounts.R
+                $R < $OUT/CollateCounts.R --vanilla
+		echo "The combined salmon transcript-level count  matrix is $OUT/allSalmonQuant.csv"
+	elif [ "$salmon" == "false" ]; then
+		echo 'setwd("'$OUT'")' > $OUT/CollateCounts.R
+		echo "ls <- list.files(recursive = TRUE, full.names = TRUE)" >> $OUT/CollateCounts.R
+		echo 'files <- ls[grepl("*ReadsPerGene.out.tab", ls)] ' >> $OUT/CollateCounts.R
+		echo "cts <- lapply(files, read.delim, skip = 4, header = FALSE, row.names = 1)" >> $OUT/CollateCounts.R
+		echo 'merged <- do.call("cbind", lapply(cts, function(x) x[, 1, drop = FALSE]))' >> $OUT/CollateCounts.R
+		echo "colnames(merged) <- basename(files)" >> $OUT/CollateCounts.R
+		echo 'write.csv(merged, "allReadsPerGene.csv")' >> $OUT/CollateCounts.R
+		$R < $OUT/CollateCounts.R --vanilla
+                echo "The combined count matrix is $OUT/allReadsPerGene.csv"
+	fi
+fi
+}
 
 function _run {
-
 if [ $cluster == false ] && [[ $suf == .fastq ]]; then
 	if [ $LIB == SE ]; then
           echo "Running pipeline in SE mode on this machine"
@@ -532,33 +769,33 @@ elif [ $cluster == true ] && [[ $suf == .fastq.gz ]]; then
 fi
 }
 
-######################
 
-#### Run pipeline ####
+#### pipeline
 
+function _pipe {
 echo "RNASeq_pipe: An automated RNA-Seq analysis pipeline
 User options selected:
 
 RNASeq_pipe $Options
 "
-echo "Initialising..."
-echo "Raw reads are *$suf"
 _init
-
-echo "Checking for genome index"
 _index
-
 _run
-
-#### if run in cluster mode then wait for jobs to finish and print status updates
 if [ $cluster == true ]; then
 	_jobCheck
+	echo "STAR Alignments finished"
 	echo "Tidying up..."
 	rm ~/*.sh.*
-	echo "Pipeline finished - check sample Log.final.out files just to make sure"
+	rm $OUT/*.sh
 elif [ $cluster == false ]; then
-	echo "Pipeline finished - check sample Log.final.out files just to make sure"
+	echo "STAR Alignments finished"
 fi
+_CollateCounts
+echo "Pipeline finished - please check individual sample *Log.final.out files just to make sure it worked"
+}
+
+## run the pipeline
+
+_pipe
 
 exit 0
-
