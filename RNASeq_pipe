@@ -19,6 +19,7 @@ Usage: RNASeq_pipe <[options]>
         			    -both fastq and gzipped fastq.gz files are supported
 				    -we will auto detect which ones you have
 				    -paired end data should follow the *_1.fastq and *_2.fastq convention
+				    -single end data should be named without the _1 or _2 e.g. *.fastq
 	-r         --ref            reference genome/transcriptome (fasta)
         -a         --annotations    reference genome/transcriptome annotations (gff or gtf)
 				    -while both gtf and gff are supported the gene ids 
@@ -285,10 +286,10 @@ fi
 # fastq.gz code blocks
 function _SEsZ {
 for i in $DATA/*_1$suf; do
-        nf=$(basename $i _1.fastq.gz)
+        nf=$(basename $i .fastq.gz)
         echo "working with $nf"
         echo $OUTaln/$nf/Log.final.out >> $OUTaln/index
-        java -jar $TRIMO SE -threads 12 -phred33 -trimlog $OUTtrim/"${nf}.trimlog" $DATA/${nf}'_1'$suf $OUTtrim/${nf}'_1_trim'$suf ILLUMINACLIP:$ADAPTs:2:30:10:4 SLIDINGWINDOW:5:20 AVGQUAL:20 MINLEN:36
+        java -jar $TRIMO SE -threads 12 -phred33 -trimlog $OUTtrim/"${nf}.trimlog" $DATA/${nf}$suf $OUTtrim/${nf}'_1_trim'$suf ILLUMINACLIP:$ADAPTs:2:30:10:4 SLIDINGWINDOW:5:20 AVGQUAL:20 MINLEN:36
         mkdir $OUTaln/${nf} 
         cd $OUTaln/${nf} 
         $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf --readFilesCommand zcat --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12
@@ -331,12 +332,12 @@ done
 
 function _SEZ {
 for i in $DATA/*_1$suf; do
-	nf=$(basename $i _1.fastq.gz)
+	nf=$(basename $i .fastq.gz)
 	echo "working with $nf"
 	echo $OUTaln/$nf/Log.final.out >> $OUTaln/index
 	echo "#!/bin/bash" > "${nf}.sh" 	
 	echo "source ~/.bash_profile" >> "${nf}.sh"
-	echo java -jar $TRIMO SE -threads 12 -phred33 -trimlog $OUTtrim/"${nf}.trimlog" $DATA/${nf}'_1'$suf $OUTtrim/${nf}'_1_trim'$suf ILLUMINACLIP:$ADAPTs:2:30:10:4 SLIDINGWINDOW:5:20 AVGQUAL:20 MINLEN:36 >> "${nf}.sh"
+	echo java -jar $TRIMO SE -threads 12 -phred33 -trimlog $OUTtrim/"${nf}.trimlog" $DATA/${nf}$suf $OUTtrim/${nf}'_1_trim'$suf ILLUMINACLIP:$ADAPTs:2:30:10:4 SLIDINGWINDOW:5:20 AVGQUAL:20 MINLEN:36 >> "${nf}.sh"
 	echo mkdir $OUTaln/${nf} >> "${nf}.sh"
 	echo cd $OUTaln/${nf} >> "${nf}.sh"
 	echo $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf --readFilesCommand zcat --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12 >> "${nf}.sh"
@@ -388,10 +389,10 @@ done
 # unziped fastq code blocks
 function _SEsuZ {
 for i in $DATA/*_1$suf; do
-        nf=$(basename $i _1.fastq)
+        nf=$(basename $i .fastq)
         echo "working with $nf"
         echo $OUTaln/$nf/Log.final.out >> $OUTaln/index
-        java -jar $TRIMO SE -threads 12 -phred33 -trimlog $OUTtrim/"${nf}.trimlog" $DATA/${nf}'_1'$suf $OUTtrim/${nf}'_1_trim'$suf ILLUMINACLIP:$ADAPTs:2:30:10:4 SLIDINGWINDOW:5:20 AVGQUAL:20 MINLEN:36
+        java -jar $TRIMO SE -threads 12 -phred33 -trimlog $OUTtrim/"${nf}.trimlog" $DATA/${nf}$suf $OUTtrim/${nf}'_1_trim'$suf ILLUMINACLIP:$ADAPTs:2:30:10:4 SLIDINGWINDOW:5:20 AVGQUAL:20 MINLEN:36
         mkdir $OUTaln/${nf}
         cd $OUTaln/${nf}
         $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12
@@ -434,12 +435,12 @@ done
 
 function _SEuZ {
 for i in $DATA/*_1$suf; do
-        nf=$(basename $i _1.fastq)
+        nf=$(basename $i .fastq)
         echo "working with $nf"
         echo $OUTaln/$nf/Log.final.out >> $OUTaln/index
         echo "#!/bin/bash" > "${nf}.sh"
         echo "source ~/.bash_profile" >> "${nf}.sh"
-        echo java -jar $TRIMO SE -threads 12 -phred33 -trimlog $OUTtrim/"${nf}.trimlog" $DATA/${nf}'_1'$suf $OUTtrim/${nf}'_1_trim'$suf ILLUMINACLIP:$ADAPTs:2:30:10:4 SLIDINGWINDOW:5:20 AVGQUAL:20 MINLEN:36 >> "${nf}.sh"
+        echo java -jar $TRIMO SE -threads 12 -phred33 -trimlog $OUTtrim/"${nf}.trimlog" $DATA/${nf}$suf $OUTtrim/${nf}'_1_trim'$suf ILLUMINACLIP:$ADAPTs:2:30:10:4 SLIDINGWINDOW:5:20 AVGQUAL:20 MINLEN:36 >> "${nf}.sh"
         echo mkdir $OUTaln/${nf} >> "${nf}.sh"
         echo cd $OUTaln/${nf} >> "${nf}.sh"
         echo $STAR --twopassMode Basic --genomeDir $GENOMEdir --readFilesIn $OUTtrim/${nf}'_1_trim'$suf --runRNGseed 777 --outFileNamePrefix "${nf}_" --outSAMtype BAM Unsorted SortedByCoordinate --quantMode TranscriptomeSAM GeneCounts --runThreadN 12 >> "${nf}.sh"
